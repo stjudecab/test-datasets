@@ -12,30 +12,62 @@ The nf-core/pacsomatic pipeline is designed for somatic variant calling using Pa
 
 ## Test Dataset Composition
 
-### Sample Information
+### Source Data
 
-The test dataset includes paired tumor-normal samples from the Genome in a Bottle (GIAB) reference sample **HG008**:
+Original data: [GIAB HG008 Cancer Genome in a Bottle](https://www.nist.gov/programs-projects/cancer-genome-bottle)  
+Download location: [GIAB FTP - PacBio Revio 20240125](https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data_somatic/HG008/Liss_lab/PacBio_Revio_20240125/)
+
+### Sample Information
 
 | Patient       | Sample ID | Status | Data Type                          |
 | ------------- | --------- | ------ | ---------------------------------- |
 | Patient_HG008 | DS_MT_T   | Tumor  | Downsampled mitochondrial BAM      |
 | Patient_HG008 | DS_MT_N   | Normal | Downsampled mitochondrial BAM      |
 
+### Rationale
+
+The mitochondrial genome (16.5 kb) was selected for fast CI/CD testing while maintaining sufficient complexity for somatic variant calling validation. Mitochondrial heteroplasmy provides somatic-like variant patterns suitable for pipeline testing.
+
 ### Files Included
 
 #### Sequencing Data (`testdata/`)
 
-- `HG008_Downsample_MT_tumor.bam`: Downsampled tumor BAM file containing mitochondrial reads
-- `HG008_Downsample_MT_normal.bam`: Downsampled normal BAM file containing mitochondrial reads
+Downsampled BAM files containing mitochondrial reads generated from GIAB HG008 samples. 
+
+**Generation procedure (example for normal sample):**
+
+1. Downsample to ~10K unaligned reads:
+   ```bash
+   samtools view -c -f 4 ${HG008_Normal_hifibam}  # Get total reads
+   samtools view -b -s 0.00015 ${HG008_Normal_hifibam} > HG008-N_Downsample_10K.bam
+   ```
+
+2. Align to hg38 using pbmm2:
+   ```bash
+   pbmm2 align hg38.fa HG008-N_Downsample_10K.bam Patient_HG008_Downsample_10K_N.align.bam
+   ```
+
+3. Extract mitochondrial reads:
+   ```bash
+   samtools view -b Patient_HG008_Downsample_10K_N.align.bam MT | \
+     samtools sort -@ 16 -o HG008_Downsample_MT_normal.align.bam
+   ```
+
+4. Revert to unaligned BAM:
+   ```bash
+   java -jar picard.jar RevertSam \
+     INPUT=HG008_Downsample_MT_normal.align.bam \
+     OUTPUT=HG008_Downsample_MT_normal.bam
+   ```
+
+**Tools used:** samtools/1.17, picard/2.9.4, pbmm2 (smrttools/25.1)
+
+The tumor sample was generated using the same procedure.
 
 #### Reference Files (`reference/`)
 
-- `MT.fa`: Human mitochondrial genome reference sequence (Homo sapiens mitochondrion, complete genome, accession: J01415.2, length: 16,569 bp)
-- `MT_target.bed`: BED file defining target regions on the mitochondrial genome for variant calling
-
-The target BED file contains two regions covering the mitochondrial genome:
-- Region 1: MT:0-3106
-- Region 2: MT:3107-16569
+- `MT.fa`: Human mitochondrial genome reference sequence ([NCBI J01415.2](https://www.ncbi.nlm.nih.gov/nuccore/J01415.2), 16,569 bp)
+- `MT_target.bed`: Manually created BED file defining target regions covering the mitochondrial genome (MT:0-3106, MT:3107-16569)
 
 ### Samplesheet Format
 
@@ -96,16 +128,6 @@ nextflow run nf-core/pacsomatic \
   --target_bed reference/MT_target.bed \
   --outdir results
 ```
-
-## Rationale for Test Data Selection
-
-The mitochondrial genome was chosen for this test dataset because:
-
-1. **Compact size**: At 16.5 kb, the mitochondrial genome is small, enabling fast CI/CD testing
-2. **High coverage**: Mitochondrial DNA is present in high copy numbers, providing robust variant calling tests
-3. **Somatic variants**: Mitochondrial heteroplasmy mimics somatic variation patterns
-4. **Reference availability**: Well-characterized reference sequence (J01415.2)
-5. **Downsampling**: The BAM files are downsampled to minimize repository size while maintaining sufficient data for pipeline validation
 
 ## Support
 
